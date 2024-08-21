@@ -19,12 +19,12 @@ from openai.types.beta.assistant_stream_event import (
     ThreadRunStepCancelled,
 )
 
-from config.main import config
-from config.prompts import SYS_PROMPT
-from utils.singleton import Singleton
-from services.assistant_setup import AssistantSetup
-from tools.definitions import GET_WEATHER_INFORMATION
-from tools.get_weather import get_weather_information
+from ..config.main import config
+from ..config.prompts import SYS_PROMPT
+from ..utils.singleton import Singleton
+from ..services.assistant_setup import AssistantSetup
+from ..tools.definitions import GET_WEATHER_INFORMATION
+from ..tools.get_weather import get_weather_information
 
 os.environ["OPENAI_API_KEY"] = config.OPENAI_API_KEY
 

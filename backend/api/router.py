@@ -8,8 +8,8 @@ from fastapi import APIRouter
 from fastapi.requests import Request
 from pydantic import BaseModel
 
-from services.chat import ChatService
-from utils.stream import stream_generator
+from ..services.chat import ChatService
+from ..utils.stream import stream_generator
 
 api_router = APIRouter()
 chat_service = ChatService()

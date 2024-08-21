@@ -3,7 +3,7 @@
     OpenAI Assistant for the chatbot
 """
 from openai import AsyncOpenAI as OpenAI
-from config.main import config
+from ..config.main import config
 
 class AssistantSetup:
     """

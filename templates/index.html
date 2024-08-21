@@ -31,6 +31,8 @@
                 <button id="mic-button" class="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm">🎤</button>
                 <button id="send-button"
                     class="ml-2 px-4 py-2 bg-green-600 text-white rounded-md shadow-sm">Send</button>
+                <button id="stop-speech-button"
+                    class="ml-2 px-4 py-2 bg-red-600 text-white rounded-md shadow-sm">Stop Speech</button>
             </div>
         </div>
     </div>
@@ -41,6 +43,7 @@
         const messageInput = document.getElementById('message-input');
         const micButton = document.getElementById('mic-button');
         const sendButton = document.getElementById('send-button');
+        const stopSpeechButton = document.getElementById('stop-speech-button');
 
         let isRecording = false;
         let recognition;
@@ -64,6 +67,8 @@
             }
         });
 
+        stopSpeechButton.addEventListener('click', stopSpeech);
+
         function getJson(s) {
             s = s.slice(s.search(/[\[{]/));
             try {
@@ -73,7 +78,6 @@
             }
         }
 
-
         function startRecognition() {
             isRecording = true;
             micButton.textContent = 'Stop 🎤';
@@ -81,6 +85,7 @@
             recognition = new webkitSpeechRecognition();
             recognition.interimResults = true;
             recognition.continuous = true;
+            recognition.lang = 'cs-CZ';  // Nastavení češtiny pro rozpoznávání řeči
 
             recognition.onresult = (event) => {
                 let interimTranscript = '';
@@ -105,6 +110,12 @@
             sendMessage(finalTranscript);
             messageInput.value = '';
             finalTranscript = '';
+        }
+
+        function stopSpeech() {
+            if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.cancel();
+            }
         }
 
         function uuidv4() {
@@ -172,14 +183,16 @@
 
         function loadVoices() {
             voices = synth.getVoices();
-            for (let i = 0; i < voices.length; i++) {
-                const option = document.createElement("option");
-                if (voices[i].lang === "en-US") {
-                    option.textContent = `${voices[i].name} (${voices[i].lang})`;
+            voiceSelect.innerHTML = '';
+            voices.forEach((voice, i) => {
+                if (voice.lang.startsWith('cs-') || voice.lang.startsWith('en-')) {
+                    const option = document.createElement("option");
+                    option.textContent = `${voice.name} (${voice.lang})`;
                     option.value = i;
                     voiceSelect.appendChild(option);
                 }
-            }
+            });
+            console.log("Dostupné hlasy:", voices);
         }
 
         if ("onvoiceschanged" in synth) {
@@ -189,7 +202,10 @@
         }
 
         function speakText(text) {
-            const utterance = new SpeechSynthesisUtterance(text.replace(/[.,\/#!$%\^&\*;*:{}=\-_`~()]/g, ""));
+            if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.cancel();
+            }
+            const utterance = new SpeechSynthesisUtterance(text);
             utterance.voice = voices[voiceSelect.value];
             utterance.rate = 1.1;
             utterance.pitch = 1.1;

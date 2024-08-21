@@ -5,7 +5,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.router import api_router
+from .api.router import api_router
 
 app = FastAPI(title="Activities Suggester App", version="1.0", debug=True)
 

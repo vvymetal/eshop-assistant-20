@@ -6,10 +6,9 @@ import os
 from datetime import datetime
 import aiohttp
 
-from config.main import config
+from ..config.main import config
 
 os.environ["OPENWEATHER_API_KEY"] = config.OPENWEATHER_API_KEY
-
 
 async def get_weather_information(latitude: int, longitude: int) -> str:
     """Gets the weather information for a given latitude and longitude."""
