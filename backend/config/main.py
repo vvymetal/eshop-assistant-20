@@ -1,7 +1,3 @@
-"""
-    This file contains all project configs read from env file.
-"""
-
 import os
 from dotenv import load_dotenv
 
@@ -17,6 +13,8 @@ class Config(Base):
     ASSISTANT_ID: str = os.getenv("ASSISTANT_ID")
     OPENAI_MODEL: str = "gpt-4o"
     OPENWEATHER_API_KEY: str = os.getenv("OPENWEATHER_API_KEY")
+    ESHOP_API_URL: str = os.getenv("ESHOP_API_URL")
+    ESHOP_API_KEY: str = os.getenv("ESHOP_API_KEY")
 
 config = Config()
-print(f"OPENWEATHER_API_KEY z config: {config.OPENWEATHER_API_KEY}")
+print(f"ESHOP_API_URL z config: {config.ESHOP_API_URL}")

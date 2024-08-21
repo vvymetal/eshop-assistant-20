@@ -48,3 +48,19 @@ async def chat_frontend(request: Request):
     This function renders the chat frontend
     """
     return templates.TemplateResponse("index.html", {"request": request})
+
+@api_router.post("/cart/transfer/{chat_id}")
+async def transfer_cart_to_eshop(chat_id: str):
+    """
+    Přenese obsah pracovního košíku do košíku e-shopu.
+    """
+    result = await chat_service.transfer_cart_to_eshop(chat_id)
+    return JSONResponse(content=result)
+
+@api_router.get("/product/{product_id}")
+async def get_product_details(product_id: str):
+    """
+    Získá detaily produktu z e-shopu.
+    """
+    result = await chat_service.get_product_details(product_id)
+    return JSONResponse(content=result)

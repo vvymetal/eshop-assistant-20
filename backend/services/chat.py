@@ -5,6 +5,9 @@
 import os
 import asyncio
 import json
+import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from openai import AsyncOpenAI as OpenAI
 from openai.types.beta import Assistant, Thread
@@ -23,10 +26,12 @@ from ..config.main import config
 from ..config.prompts import SYS_PROMPT
 from ..utils.singleton import Singleton
 from ..services.assistant_setup import AssistantSetup
-from ..tools.definitions import GET_WEATHER_INFORMATION
-from ..tools.get_weather import get_weather_information
+from ..tools.cart_management import CartManagementTool, CART_MANAGEMENT_TOOL
 
 os.environ["OPENAI_API_KEY"] = config.OPENAI_API_KEY
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class ChatService(metaclass=Singleton):
     """
@@ -42,31 +47,53 @@ class ChatService(metaclass=Singleton):
 
     def __init__(self) -> None:
         self.client = OpenAI()
-        self.name = 'Activity Suggester'
+        self.name = 'E-shop Assistant'
         self.assistant_id = config.ASSISTANT_ID
+        self.cart_tool = CartManagementTool()
         self.init_tools()
-        self.initialize()
-
-    def initialize(self):
-        """
-        This function initializes the required services and objects.
-        """
         self.assistant_setup = AssistantSetup(
             self.client,
             self.assistant_id,
             self.sys_prompt,
             self.name,
-            self.tools,
+            self.tools
         )
+        asyncio.create_task(self.initialize_assistant())
+
+    def init_tools(self):
+        self.tools = [CART_MANAGEMENT_TOOL]
+        self.tool_instances = {
+            "manage_cart": self.cart_tool.manage_cart,  # Přidejte tuto řádku
+        }
+
+    async def initialize_assistant(self):
+        """
+        Initializes the assistant asynchronously.
+        """
+        try:
+            self.assistant = await self.assistant_setup.create_or_update_assistant()
+            logger.info(f"Assistant initialized with ID: {self.assistant.id}")
+        except Exception as e:
+            logger.error(f"Failed to initialize assistant: {e}")
 
     async def create_assistant(self):
         """
         This function creates assistant if not exists
         """
         if not self.assistant:
-            self.assistant = (  # pylint: disable=attribute-defined-outside-init
-                await self.assistant_setup.create_or_update_assistant()
-            )
+            try:
+                self.assistant = await self.assistant_setup.create_or_update_assistant()
+                logger.info(f"Assistant created with ID: {self.assistant.id}")
+            except Exception as e:
+                logger.error(f"Failed to create assistant: {e}")
+                raise
+
+    def get_formatted_time(self):
+        """
+        Returns the current time formatted as a string.
+        """
+        current_time = datetime.now(ZoneInfo("Europe/Prague"))
+        return current_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
     async def generate(self, chat_id, content):
         """
@@ -74,11 +101,22 @@ class ChatService(metaclass=Singleton):
         """
         await self.create_assistant()
         thread = await self.create_or_get_thread(chat_id)
+
+        # Add current time information
+        time_message = f"Aktuální čas: {self.get_formatted_time()}"
+        await self.client.beta.threads.messages.create(
+            thread.id,
+            role="user",
+            content=time_message,
+        )
+
+        # Add user's message
         await self.client.beta.threads.messages.create(
             thread.id,
             role="user",
             content=content,
         )
+
         stream = await self.client.beta.threads.runs.create(
             thread_id=thread.id, assistant_id=self.assistant.id, stream=True
         )
@@ -86,7 +124,7 @@ class ChatService(metaclass=Singleton):
             async for token in self.process_event(event, thread):
                 yield token
 
-        print("Tool run completed")
+        logger.info("Tool run completed")
 
     async def create_or_get_thread(self, chat_id) -> Thread:
         """
@@ -96,8 +134,8 @@ class ChatService(metaclass=Singleton):
         if self.chat_to_thread_map.get(chat_id):
             try:
                 thread = await self.client.beta.threads.retrieve(self.chat_to_thread_map[chat_id])
-            except Exception as e:  # pylint: disable=bare-except, broad-except
-                print("Error in getting thread", e)
+            except Exception as e:
+                logger.error(f"Error in getting thread: {e}")
                 thread = None
         if not thread:
             thread = await self.client.beta.threads.create(
@@ -168,36 +206,32 @@ class ChatService(metaclass=Singleton):
                 ThreadRunStepCancelled,
             ]
         ):
-            raise Exception("Run failed") # pylint: disable=broad-exception-raised
-
-    def init_tools(self):
-        """
-        This function initializes the tools.
-        """
-        self.tools = [GET_WEATHER_INFORMATION]
-        self.tool_instances = {
-            "get_weather_information": get_weather_information,
-        }
+            error_message = f"Run failed: {event.__class__.__name__}"
+            logger.error(error_message)
+            raise Exception(error_message)
 
     async def process_tool_call(self, tool_call, tool_outputs: list, extra_args=None):
-        """
-        This function processes a single tool call.
-        And also handles the exceptions.
-        """
         result = None
         try:
             arguments = json.loads(tool_call.function.arguments)
             function_name = tool_call.function.name
             if extra_args:
-                for key, value in extra_args.items():
-                    arguments[key] = value
+                arguments.update(extra_args)
             if function_name not in self.tool_instances:
-                result = "Tool not found"
+                result = f"Tool '{function_name}' not found"
+                logger.warning(result)
             else:
-                result = await self.tool_instances[function_name](**arguments)
-        except Exception as e:  # pylint: disable=broad-except
-            result = str(e)
-            print(e)
+                tool_instance = self.tool_instances[function_name]
+                result = tool_instance(**arguments)
+            logger.info(f"Tool '{function_name}' executed successfully")
+        except Exception as e:
+            result = f"Error executing tool '{function_name}': {str(e)}"
+            logger.error(result)
+        
+        # Ujistíme se, že výstup je string
+        if not isinstance(result, str):
+            result = json.dumps(result, ensure_ascii=False)
+        
         created_tool_output = self.create_tool_output(tool_call, result)
         tool_outputs.append(created_tool_output)
 
