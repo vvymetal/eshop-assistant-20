@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, List, Card, Image, Modal } from 'antd';
 import { ShoppingCartOutlined, SendOutlined } from '@ant-design/icons';
 
-const EshopAssistantChatWidget = ({ apiEndpoint, onAddToCart }) => {
+const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -15,6 +15,11 @@ const EshopAssistantChatWidget = ({ apiEndpoint, onAddToCart }) => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Nová funkcionalita pro snadnou integraci
+  useEffect(() => {
+    console.log('ChatWidget initialized with endpoint:', apiEndpoint);
+  }, [apiEndpoint]);
+
   const sendMessage = async () => {
     if (!inputMessage.trim()) return;
 
@@ -23,10 +28,10 @@ const EshopAssistantChatWidget = ({ apiEndpoint, onAddToCart }) => {
     setInputMessage('');
 
     try {
-      const response = await fetch(`${apiEndpoint}/chat`, {
+      const response = await fetch(`${apiEndpoint}/${chat_id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: inputMessage }),
+        body: JSON.stringify({ user_query: inputMessage }),
       });
 
       if (response.body) {
@@ -85,12 +90,12 @@ const EshopAssistantChatWidget = ({ apiEndpoint, onAddToCart }) => {
   );
 
   const renderWorkingCart = () => (
-    <Modal
-      title="Working Cart"
-      visible={workingCart.length > 0}
-      onOk={() => onAddToCart(workingCart)}
-      onCancel={() => setWorkingCart([])}
-    >
+      <Modal
+        title="Working Cart"
+        open={workingCart.length > 0}
+        onOk={() => onAddToCart(workingCart)}
+        onCancel={() => setWorkingCart([])}
+      >
       <List
         dataSource={workingCart}
         renderItem={item => (
@@ -108,7 +113,7 @@ const EshopAssistantChatWidget = ({ apiEndpoint, onAddToCart }) => {
   const renderQuiz = () => (
     <Modal
       title={quizData?.title}
-      visible={showQuiz}
+      open={showQuiz}
       onOk={() => setShowQuiz(false)}
       onCancel={() => setShowQuiz(false)}
     >
@@ -131,7 +136,7 @@ const EshopAssistantChatWidget = ({ apiEndpoint, onAddToCart }) => {
   };
 
   return (
-    <div className="chat-widget">
+    <div className="chat-widget" style={customStyles}>
       <List
         className="message-list"
         dataSource={messages}
@@ -159,4 +164,4 @@ const EshopAssistantChatWidget = ({ apiEndpoint, onAddToCart }) => {
   );
 };
 
-export default EshopAssistantChatWidget;
+export default ChatWidget;

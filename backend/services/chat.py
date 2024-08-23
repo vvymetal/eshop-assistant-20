@@ -27,6 +27,7 @@ from ..config.prompts import SYS_PROMPT
 from ..utils.singleton import Singleton
 from ..services.assistant_setup import AssistantSetup
 from ..tools.cart_management import CartManagementTool, CART_MANAGEMENT_TOOL
+from ..services.eshop_api import EshopApiService
 
 os.environ["OPENAI_API_KEY"] = config.OPENAI_API_KEY
 
@@ -50,6 +51,7 @@ class ChatService(metaclass=Singleton):
         self.name = 'E-shop Assistant'
         self.assistant_id = config.ASSISTANT_ID
         self.cart_tool = CartManagementTool()
+        self.eshop_api = EshopApiService()  # Inicializace EshopApiService
         self.init_tools()
         self.assistant_setup = AssistantSetup(
             self.client,
@@ -63,8 +65,101 @@ class ChatService(metaclass=Singleton):
     def init_tools(self):
         self.tools = [CART_MANAGEMENT_TOOL]
         self.tool_instances = {
-            "manage_cart": self.cart_tool.manage_cart,  # Přidejte tuto řádku
+            "manage_cart": self.cart_tool.manage_cart,
+            "transfer_cart": self.transfer_cart_to_eshop,
+            "get_product_info": self.get_product_info,
+            "get_product_list": self.get_product_list,
         }
+
+    async def transfer_cart_to_eshop(self, chat_id):
+        """
+        Přenese obsah pracovního košíku do košíku e-shopu.
+        """
+        cart_items = self.cart_tool.view_cart()['items']
+        try:
+            result = await self.eshop_api.transfer_cart(cart_items)
+            logger.info(f"Cart transferred to e-shop for chat_id: {chat_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to transfer cart to e-shop for chat_id {chat_id}: {str(e)}")
+            raise
+
+    async def get_product_info(self, product_id):
+        """
+        Získá informace o produktu z e-shopu.
+        """
+        try:
+            result = await self.eshop_api.get_product_info(product_id)
+            logger.info(f"Product info retrieved for product_id: {product_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get product info for product_id {product_id}: {str(e)}")
+            raise
+
+    async def get_product_list(self, category=None, limit=50, offset=0):
+        """
+        Získá seznam produktů z e-shopu.
+        """
+        try:
+            result = await self.eshop_api.get_product_list(category, limit, offset)
+            logger.info(f"Product list retrieved. Category: {category}, Limit: {limit}, Offset: {offset}")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get product list: {str(e)}")
+            raise
+
+    async def process_tool_call(self, tool_call, tool_outputs: list, extra_args=None):
+        result = None
+        try:
+            arguments = json.loads(tool_call.function.arguments)
+            function_name = tool_call.function.name
+            if extra_args:
+                arguments.update(extra_args)
+            if function_name not in self.tool_instances:
+                result = f"Tool '{function_name}' not found"
+                logger.warning(result)
+            else:
+                tool_instance = self.tool_instances[function_name]
+                if asyncio.iscoroutinefunction(tool_instance):
+                    result = await tool_instance(**arguments)
+                else:
+                    result = tool_instance(**arguments)
+            logger.info(f"Tool '{function_name}' executed successfully")
+        except Exception as e:
+            result = f"Error executing tool '{function_name}': {str(e)}"
+            logger.error(result)
+        
+        # Ujistíme se, že výstup je string
+        if not isinstance(result, str):
+            result = json.dumps(result, ensure_ascii=False)
+        
+        created_tool_output = self.create_tool_output(tool_call, result)
+        tool_outputs.append(created_tool_output)
+
+    async def process_tool_call(self, tool_call, tool_outputs: list, extra_args=None):
+        result = None
+        try:
+            arguments = json.loads(tool_call.function.arguments)
+            function_name = tool_call.function.name
+            if extra_args:
+                arguments.update(extra_args)
+            if function_name not in self.tool_instances:
+                result = f"Tool '{function_name}' not found"
+                logger.warning(result)
+            else:
+                tool_instance = self.tool_instances[function_name]
+                result = tool_instance(**arguments)
+            logger.info(f"Tool '{function_name}' executed successfully")
+        except Exception as e:
+            result = f"Error executing tool '{function_name}': {str(e)}"
+            logger.error(result)
+        
+        # Ujistíme se, že výstup je string
+        if not isinstance(result, str):
+            result = json.dumps(result, ensure_ascii=False)
+        
+        created_tool_output = self.create_tool_output(tool_call, result)
+        tool_outputs.append(created_tool_output)
 
     async def initialize_assistant(self):
         """

@@ -8,14 +8,26 @@ def load_gitignore(project_path):
     ignore_patterns = []
     if os.path.exists(gitignore_path):
         with open(gitignore_path, 'r') as f:
-            ignore_patterns = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    # Převedeme vzor na absolutní cestu, pokud nezačíná *
+                    if not line.startswith('*'):
+                        line = os.path.join(project_path, line)
+                    ignore_patterns.append(line)
     return ignore_patterns
 
 def should_ignore(path, ignore_patterns):
     path = Path(path)
     for pattern in ignore_patterns:
-        if fnmatch.fnmatch(str(path), pattern) or any(fnmatch.fnmatch(str(parent), pattern) for parent in path.parents):
-            return True
+        if pattern.endswith('/'):
+            # Pokud vzor končí '/', porovnáváme s adresářem
+            if path.is_dir() and (fnmatch.fnmatch(str(path) + '/', pattern) or any(fnmatch.fnmatch(str(parent) + '/', pattern) for parent in path.parents)):
+                return True
+        else:
+            # Jinak porovnáváme s celou cestou
+            if fnmatch.fnmatch(str(path), pattern) or any(fnmatch.fnmatch(str(parent), pattern) for parent in path.parents):
+                return True
     return False
 
 def should_include_file(file_path, ignore_patterns):
@@ -27,6 +39,9 @@ def should_include_file(file_path, ignore_patterns):
     _, file_extension = os.path.splitext(file_path)
     file_name = os.path.basename(file_path)
     
+    if 'node_modules' in file_path.split(os.path.sep):
+        return False
+
     # Kontrola, zda soubor není ignorován pomocí .gitignore
     if should_ignore(file_path, ignore_patterns):
         return False
