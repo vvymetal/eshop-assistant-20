@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, List, Card, Image, Modal } from 'antd';
 import { ShoppingCartOutlined, SendOutlined } from '@ant-design/icons';
+import { v4 as uuidv4 } from 'uuid';
+import ReactMarkdown from 'react-markdown';
+
 
 const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   const [messages, setMessages] = useState([]);
@@ -9,30 +12,42 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   const [workingCart, setWorkingCart] = useState([]);
   const [quizData, setQuizData] = useState(null);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [chatId, setChatId] = useState(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Nová funkcionalita pro snadnou integraci
   useEffect(() => {
+    const newChatId = uuidv4();
+    setChatId(newChatId);
     console.log('ChatWidget initialized with endpoint:', apiEndpoint);
+    console.log('New chat ID generated:', newChatId);
   }, [apiEndpoint]);
 
   const sendMessage = async () => {
-    if (!inputMessage.trim()) return;
+    console.log('Attempting to send message. Input:', inputMessage, 'Chat ID:', chatId);
+    if (!inputMessage.trim() || !chatId) {
+      console.log('Message not sent: empty input or missing chat ID');
+      return;
+    }
 
     setIsLoading(true);
-    setMessages(prev => [...prev, { role: 'user', content: inputMessage }]);
+    setMessages(prev => {
+      console.log('Adding user message to state:', inputMessage);
+      return [...prev, { role: 'user', content: inputMessage }];
+    });
     setInputMessage('');
 
     try {
-      const response = await fetch(`${apiEndpoint}/${chat_id}`, {
+      console.log(`Sending POST request to ${apiEndpoint}/${chatId}`);
+      const response = await fetch(`${apiEndpoint}/${chatId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_query: inputMessage }),
       });
+      console.log('Response received:', response);
 
       if (response.body) {
         const reader = response.body.getReader();
@@ -40,69 +55,95 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log('Stream complete');
+            break;
+          }
 
-          partialResponse += new TextDecoder().decode(value);
+          const chunk = new TextDecoder().decode(value);
+          console.log('Received chunk:', chunk);
+          partialResponse += chunk;
           const chunks = partialResponse.split('\n\n');
           
-          for (let chunk of chunks) {
-            if (chunk.startsWith('data: ')) {
-              const data = JSON.parse(chunk.slice(6));
-              handleStreamedResponse(data);
+          for (let i = 0; i < chunks.length - 1; i++) {
+            if (chunks[i].startsWith('data: ')) {
+              try {
+                const data = JSON.parse(chunks[i].slice(6));
+                console.log('Parsed data:', data);
+                handleStreamedResponse(data);
+              } catch (error) {
+                console.error('Error parsing chunk:', error);
+              }
             }
           }
 
           partialResponse = chunks[chunks.length - 1];
         }
+      } else {
+        console.log('Response body is null');
       }
     } catch (error) {
       console.error('Error sending message:', error);
     } finally {
       setIsLoading(false);
+      console.log('Message sending process completed');
     }
   };
 
   const handleStreamedResponse = (data) => {
+    console.log('Handling streamed response:', data);
     if (data.type === 'text') {
       setMessages(prev => {
         const lastMessage = prev[prev.length - 1];
-        if (lastMessage.role === 'assistant') {
-          return [...prev.slice(0, -1), { ...lastMessage, content: lastMessage.content + data.content }];
+        if (lastMessage && lastMessage.role === 'assistant') {
+          console.log('Updating existing assistant message');
+          return [...prev.slice(0, -1), { ...lastMessage, content: lastMessage.content + (data.text?.value || '') }];
         } else {
-          return [...prev, { role: 'assistant', content: data.content }];
+          console.log('Adding new assistant message');
+          return [...prev, { role: 'assistant', content: data.text?.value || '' }];
         }
       });
     } else if (data.type === 'product') {
+      console.log('Adding product to working cart:', data.product);
       setWorkingCart(prev => [...prev, data.product]);
     } else if (data.type === 'quiz') {
+      console.log('Setting quiz data:', data.quiz);
       setQuizData(data.quiz);
       setShowQuiz(true);
+    } else {
+      console.log('Unknown data type received:', data.type);
     }
   };
 
   const renderMessage = (message) => (
     <List.Item>
-      <Card>
+      <Card style={{ width: '100%' }}>
         <strong>{message.role === 'user' ? 'You:' : 'Assistant:'}</strong>
-        <p>{message.content}</p>
+        <ReactMarkdown>{message.content || ''}</ReactMarkdown>
       </Card>
     </List.Item>
   );
 
   const renderWorkingCart = () => (
-      <Modal
-        title="Working Cart"
-        open={workingCart.length > 0}
-        onOk={() => onAddToCart(workingCart)}
-        onCancel={() => setWorkingCart([])}
-      >
+    <Modal
+      title="Working Cart"
+      open={workingCart.length > 0}
+      onOk={() => {
+        console.log('Adding items to cart:', workingCart);
+        onAddToCart(workingCart);
+      }}
+      onCancel={() => {
+        console.log('Clearing working cart');
+        setWorkingCart([]);
+      }}
+    >
       <List
         dataSource={workingCart}
         renderItem={item => (
           <List.Item>
             <Card>
-              <Image src={item.image} width={50} />
-              <p>{item.name} - ${item.price}</p>
+              {item.image && <Image src={item.image} width={50} />}
+              <p>{item.name || 'Unnamed product'} - ${item.price || 'N/A'}</p>
             </Card>
           </List.Item>
         )}
@@ -112,27 +153,33 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
 
   const renderQuiz = () => (
     <Modal
-      title={quizData?.title}
+      title={quizData?.title || 'Quiz'}
       open={showQuiz}
-      onOk={() => setShowQuiz(false)}
-      onCancel={() => setShowQuiz(false)}
+      onOk={() => {
+        console.log('Closing quiz');
+        setShowQuiz(false);
+      }}
+      onCancel={() => {
+        console.log('Cancelling quiz');
+        setShowQuiz(false);
+      }}
     >
-      {quizData?.questions.map((question, index) => (
+      {quizData?.questions?.map((question, index) => (
         <div key={index}>
-          <p>{question.text}</p>
-          {question.options.map((option, optionIndex) => (
+          <p>{question.text || ''}</p>
+          {question.options?.map((option, optionIndex) => (
             <Button key={optionIndex} onClick={() => handleQuizAnswer(index, optionIndex)}>
-              {option}
+              {option || ''}
             </Button>
           ))}
         </div>
-      ))}
+      )) || <p>No questions available</p>}
     </Modal>
   );
 
   const handleQuizAnswer = (questionIndex, answerIndex) => {
+    console.log(`Quiz answer selected: Question ${questionIndex}, Answer ${answerIndex}`);
     // Implementace logiky pro zpracování odpovědí na kvíz
-    console.log(`Question ${questionIndex}, Answer ${answerIndex}`);
   };
 
   return (
@@ -158,8 +205,8 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
           Cart ({workingCart.length})
         </Button>
       </div>
-      {renderWorkingCart()}
-      {renderQuiz()}
+      {workingCart.length > 0 && renderWorkingCart()}
+      {showQuiz && renderQuiz()}
     </div>
   );
 };
