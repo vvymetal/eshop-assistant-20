@@ -42,48 +42,69 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   }, [apiEndpoint]);
 
   const updateWorkingCart = (cartAction) => {
+    console.log('Vstupní cartAction:', cartAction);
+    
+    let parsedAction;
     try {
-      const parsedAction = JSON.parse(cartAction);
-      console.log('Zpracování akce košíku:', parsedAction);
+      parsedAction = typeof cartAction === 'string' ? JSON.parse(cartAction) : cartAction;
+    } catch (error) {
+      console.error('Chyba při parsování cartAction:', error);
+      return; // Ukončíme funkci, pokud nemůžeme parsovat data
+    }
   
-      if (parsedAction.status === 'added' || parsedAction.status === 'updated') {
-        setWorkingCart(prevCart => {
-          const updatedCart = [...prevCart];
-          const existingItemIndex = updatedCart.findIndex(item => item.product_id === parsedAction.product_id);
-          
+    console.log('Zpracování akce košíku:', parsedAction);
+  
+    if (!parsedAction || typeof parsedAction !== 'object') {
+      console.error('Neplatná struktura cartAction');
+      return;
+    }
+  
+    const { status, product_id, name, price, quantity, message } = parsedAction;
+  
+    setWorkingCart(prevCart => {
+      let updatedCart = [...prevCart];
+  
+      switch (status) {
+        case 'removed':
+          updatedCart = updatedCart.filter(item => item.product_id !== product_id);
+          console.log(message || `Položka ${product_id} odebrána z košíku`);
+          break;
+        
+        case 'added':
+        case 'updated':
+          const existingItemIndex = updatedCart.findIndex(item => item.product_id === product_id);
           if (existingItemIndex !== -1) {
             updatedCart[existingItemIndex] = {
               ...updatedCart[existingItemIndex],
-              quantity: parsedAction.quantity || updatedCart[existingItemIndex].quantity + 1
+              quantity: quantity ?? updatedCart[existingItemIndex].quantity + 1,
+              name: name || updatedCart[existingItemIndex].name,
+              price: price ?? updatedCart[existingItemIndex].price
             };
           } else {
             updatedCart.push({
-              product_id: parsedAction.product_id,
-              name: parsedAction.name || 'Unnamed product',
-              price: parsedAction.price || 'N/A',
-              quantity: parsedAction.quantity || 1
+              product_id,
+              name: name || 'Unnamed product',
+              price: price ?? 'N/A',
+              quantity: quantity ?? 1
             });
           }
-          
-          return updatedCart;
-        });
-        console.log(parsedAction.message || 'Položka přidána do košíku');
-      } else if (parsedAction.status === 'removed' || parsedAction.status === 'cleared') {
-  
-        setWorkingCart(prevCart => {
-          if (parsedAction.status === 'cleared') {
-            return [];
-          } else {
-            return prevCart.filter(item => item.product_id !== parsedAction.product_id);
-          }
-        });
-        console.log(parsedAction.message || 'Položka odebrána z košíku');
+          console.log(message || `Položka ${product_id} přidána/aktualizována v košíku`);
+          break;
+        
+        case 'cleared':
+          updatedCart = [];
+          console.log('Košík byl vyčištěn');
+          break;
+        
+        default:
+          console.warn(`Neznámá akce košíku: ${status}`);
+          return prevCart; // Vrátíme původní stav košíku při neznámé akci
       }
-    } catch (error) {
-      console.error('Chyba při zpracování akce košíku:', error);
-    }
+  
+      console.log('Nový stav košíku:', updatedCart);
+      return updatedCart;
+    });
   };
-
 
   const sendMessage = async () => {
     if (inputMessage.trim() !== '') {

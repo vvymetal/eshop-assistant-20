@@ -135,11 +135,8 @@ class ChatService(metaclass=Singleton):
 
             # Přidáme cart_action do odpovědi, pokud se jedná o manage_cart
             if function_name == "manage_cart":
-                return {"cart_action": result}
-            return {
-                "tool_call_id": tool_call.id,
-                "output": result
-            }
+                cart_action_result = json.loads(result)
+                return {"cart_action": cart_action_result}
 
     async def process_tool_calls(self, tool_calls, extra_args = None):
             """

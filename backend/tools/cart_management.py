@@ -60,18 +60,29 @@ class CartManagementTool:
         }
 
     def remove_from_cart(self, product_id: str, quantity: Optional[int] = None) -> Dict:
-        """Odebere produkt z košíku nebo sníží jeho množství."""
-        for index, item in enumerate(self.cart.items):
-            if item.product_id == product_id:
-                if quantity is None or item.quantity <= quantity:
-                    del self.cart.items[index]
-                    return {"status": "removed", "message": f"Produkt {item.name} byl odebrán z košíku."}
-                else:
-                    item.quantity -= quantity
-                    return {"status": "updated", "message": f"Množství produktu {item.name} bylo sníženo na {item.quantity}."}
-        
-        return {"status": "not_found", "message": "Produkt nebyl v košíku nalezen."}
-
+            for index, item in enumerate(self.cart.items):
+                if item.product_id == product_id:
+                    if quantity is None or item.quantity <= quantity:
+                        removed_item = self.cart.items.pop(index)
+                        return {
+                            "status": "removed",
+                            "message": f"Produkt {removed_item.name} byl odebrán z košíku.",
+                            "product_id": product_id,
+                            "name": removed_item.name,
+                            "price": removed_item.price,
+                            "quantity": removed_item.quantity
+                        }
+                    else:
+                        item.quantity -= quantity
+                        return {
+                            "status": "updated",
+                            "message": f"Množství produktu {item.name} bylo sníženo na {item.quantity}.",
+                            "product_id": product_id,
+                            "name": item.name,
+                            "price": item.price,
+                            "quantity": item.quantity
+                        }
+            return {"status": "not_found", "message": "Produkt nebyl v košíku nalezen."}
     def view_cart(self) -> Dict:
         """Zobrazí obsah košíku."""
         if not self.cart.items:
