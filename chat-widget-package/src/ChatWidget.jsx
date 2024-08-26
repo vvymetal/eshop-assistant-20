@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, Input, List, Card, Image, Modal } from 'antd';
-import { ShoppingCartOutlined, SendOutlined } from '@ant-design/icons';
+import { Button, Input, List, Card, Image, Modal, Select } from 'antd';
+import { ShoppingCartOutlined, SendOutlined, AudioOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import ReactMarkdown from 'react-markdown';
 
+const { Option } = Select;
 
 const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   const [messages, setMessages] = useState([]);
@@ -13,6 +14,10 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   const [quizData, setQuizData] = useState(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [chatId, setChatId] = useState(null);
+  const [showCart, setShowCart] = useState(false);
+  const [voices, setVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState(null);
+  const [isListening, setIsListening] = useState(false);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -20,104 +25,162 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   }, [messages]);
 
   useEffect(() => {
-    const newChatId = uuidv4();
-    setChatId(newChatId);
+    setChatId(uuidv4());
     console.log('ChatWidget initialized with endpoint:', apiEndpoint);
-    console.log('New chat ID generated:', newChatId);
+    console.log('Generated chatId:', chatId);
+    
+    // Inicializace hlasů pro text-to-speech
+    const synth = window.speechSynthesis;
+    const loadVoices = () => {
+      const availableVoices = synth.getVoices();
+      setVoices(availableVoices.filter(voice => voice.lang.startsWith('cs') || voice.lang.startsWith('en')));
+    };
+    loadVoices();
+    if (synth.onvoiceschanged !== undefined) {
+      synth.onvoiceschanged = loadVoices;
+    }
   }, [apiEndpoint]);
 
-  const sendMessage = async () => {
-    console.log('Attempting to send message. Input:', inputMessage, 'Chat ID:', chatId);
-    if (!inputMessage.trim() || !chatId) {
-      console.log('Message not sent: empty input or missing chat ID');
-      return;
-    }
-
-    setIsLoading(true);
-    setMessages(prev => {
-      console.log('Adding user message to state:', inputMessage);
-      return [...prev, { role: 'user', content: inputMessage }];
-    });
-    setInputMessage('');
-
+  const updateWorkingCart = (cartAction) => {
     try {
-      console.log(`Sending POST request to ${apiEndpoint}/${chatId}`);
-      const response = await fetch(`${apiEndpoint}/${chatId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_query: inputMessage }),
-      });
-      console.log('Response received:', response);
-
-      if (response.body) {
-        const reader = response.body.getReader();
-        let partialResponse = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            console.log('Stream complete');
-            break;
-          }
-
-          const chunk = new TextDecoder().decode(value);
-          console.log('Received chunk:', chunk);
-          partialResponse += chunk;
-          const chunks = partialResponse.split('\n\n');
+      const parsedAction = JSON.parse(cartAction);
+      console.log('Zpracování akce košíku:', parsedAction);
+  
+      if (parsedAction.status === 'added' || parsedAction.status === 'updated') {
+        setWorkingCart(prevCart => {
+          const updatedCart = [...prevCart];
+          const existingItemIndex = updatedCart.findIndex(item => item.product_id === parsedAction.product_id);
           
-          for (let i = 0; i < chunks.length - 1; i++) {
-            if (chunks[i].startsWith('data: ')) {
-              try {
-                const data = JSON.parse(chunks[i].slice(6));
-                console.log('Parsed data:', data);
-                handleStreamedResponse(data);
-              } catch (error) {
-                console.error('Error parsing chunk:', error);
-              }
-            }
+          if (existingItemIndex !== -1) {
+            updatedCart[existingItemIndex] = {
+              ...updatedCart[existingItemIndex],
+              quantity: parsedAction.quantity || updatedCart[existingItemIndex].quantity + 1
+            };
+          } else {
+            updatedCart.push({
+              product_id: parsedAction.product_id,
+              name: parsedAction.name || 'Unnamed product',
+              price: parsedAction.price || 'N/A',
+              quantity: parsedAction.quantity || 1
+            });
           }
-
-          partialResponse = chunks[chunks.length - 1];
-        }
-      } else {
-        console.log('Response body is null');
+          
+          return updatedCart;
+        });
+        console.log(parsedAction.message || 'Položka přidána do košíku');
+      } else if (parsedAction.status === 'removed' || parsedAction.status === 'cleared') {
+        setWorkingCart(prevCart => {
+          if (parsedAction.status === 'cleared') {
+            return [];
+          } else {
+            return prevCart.filter(item => item.product_id !== parsedAction.product_id);
+          }
+        });
+        console.log(parsedAction.message || 'Položka odebrána z košíku');
       }
     } catch (error) {
-      console.error('Error sending message:', error);
-    } finally {
-      setIsLoading(false);
-      console.log('Message sending process completed');
+      console.error('Chyba při zpracování akce košíku:', error);
     }
   };
 
-  const handleStreamedResponse = (data) => {
-    console.log('Handling streamed response:', data);
-    if (data.type === 'text') {
-      setMessages(prev => {
-        const lastMessage = prev[prev.length - 1];
-        if (lastMessage && lastMessage.role === 'assistant') {
-          console.log('Updating existing assistant message');
-          return [...prev.slice(0, -1), { ...lastMessage, content: lastMessage.content + (data.text?.value || '') }];
-        } else {
-          console.log('Adding new assistant message');
-          return [...prev, { role: 'assistant', content: data.text?.value || '' }];
+
+  const sendMessage = async () => {
+    if (inputMessage.trim() !== '') {
+      console.log('Odesílání zprávy:', inputMessage);
+      setMessages(prevMessages => [...prevMessages, { role: 'user', content: inputMessage }]);
+      setInputMessage('');
+      setIsLoading(true);
+  
+      try {
+        console.log('Volání API:', `${apiEndpoint}/${chatId}`);
+        const response = await retryFetch(`${apiEndpoint}/${chatId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ user_query: inputMessage }),
+        });
+        
+        console.log('API odpověď status:', response.status);
+  
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      });
-    } else if (data.type === 'product') {
-      console.log('Adding product to working cart:', data.product);
-      setWorkingCart(prev => [...prev, data.product]);
-    } else if (data.type === 'quiz') {
-      console.log('Setting quiz data:', data.quiz);
-      setQuizData(data.quiz);
-      setShowQuiz(true);
-    } else {
-      console.log('Unknown data type received:', data.type);
+  
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+  
+        let accumulatedResponse = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          console.log('Přijatý chunk:', chunk);
+          
+          accumulatedResponse += chunk;
+          const lines = accumulatedResponse.split('\n');
+          accumulatedResponse = lines.pop(); // Poslední (možná neúplný) chunk
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const jsonData = line.slice(5);
+              try {
+                const parsedData = JSON.parse(jsonData);
+                if (parsedData.text?.value) {
+                  setMessages(prevMessages => {
+                    const lastMessage = prevMessages[prevMessages.length - 1];
+                    if (lastMessage && lastMessage.role === 'assistant') {
+                      const updatedMessages = [...prevMessages];
+                      updatedMessages[updatedMessages.length - 1] = {
+                        ...lastMessage,
+                        content: lastMessage.content + parsedData.text.value
+                      };
+                      return updatedMessages;
+                    } else {
+                      return [...prevMessages, { role: 'assistant', content: parsedData.text.value }];
+                    }
+                  });
+                }
+                if (parsedData.cart_action) {
+                  updateWorkingCart(parsedData.cart_action);
+                }
+              } catch (error) {
+                console.error('Chyba při parsování JSON:', error);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Chyba při odesílání zprávy:', error);
+        setMessages(prevMessages => [...prevMessages, { role: 'error', content: 'Došlo k chybě při komunikaci se serverem.' }]);
+      } finally {
+        setIsLoading(false);
+      }
     }
+  };
+
+// Přidejte tuto funkci do komponenty
+const retryFetch = async (url, options, retries = 3) => {
+  try {
+    return await fetch(url, options);
+  } catch (err) {
+    if (retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return retryFetch(url, options, retries - 1);
+    }
+    throw err;
+  }
+};
+
+  const handleStreamedResponse = (data) => {
+    console.log('Zpracování streamovaných dat:', data);
+    // Tato funkce může být použita pro další zpracování streamovaných dat,
+    // pokud je potřeba další logika kromě přímého zobrazení
   };
 
   const renderMessage = (message) => (
     <List.Item>
-      <Card style={{ width: '100%' }}>
+      <Card style={{ width: '100%', backgroundColor: message.role === 'user' ? '#e6f7ff' : '#f0f0f0' }}>
         <strong>{message.role === 'user' ? 'You:' : 'Assistant:'}</strong>
         <ReactMarkdown>{message.content || ''}</ReactMarkdown>
       </Card>
@@ -127,15 +190,12 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
   const renderWorkingCart = () => (
     <Modal
       title="Working Cart"
-      open={workingCart.length > 0}
+      open={showCart}
       onOk={() => {
-        console.log('Adding items to cart:', workingCart);
         onAddToCart(workingCart);
+        setShowCart(false);
       }}
-      onCancel={() => {
-        console.log('Clearing working cart');
-        setWorkingCart([]);
-      }}
+      onCancel={() => setShowCart(false)}
     >
       <List
         dataSource={workingCart}
@@ -143,7 +203,8 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
           <List.Item>
             <Card>
               {item.image && <Image src={item.image} width={50} />}
-              <p>{item.name || 'Unnamed product'} - ${item.price || 'N/A'}</p>
+              <p>{item.name || 'Unnamed product'} - {item.price ? `$${item.price}` : 'N/A'}</p>
+              <p>Quantity: {item.quantity}</p>
             </Card>
           </List.Item>
         )}
@@ -151,61 +212,80 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
     </Modal>
   );
 
-  const renderQuiz = () => (
-    <Modal
-      title={quizData?.title || 'Quiz'}
-      open={showQuiz}
-      onOk={() => {
-        console.log('Closing quiz');
-        setShowQuiz(false);
-      }}
-      onCancel={() => {
-        console.log('Cancelling quiz');
-        setShowQuiz(false);
-      }}
-    >
-      {quizData?.questions?.map((question, index) => (
-        <div key={index}>
-          <p>{question.text || ''}</p>
-          {question.options?.map((option, optionIndex) => (
-            <Button key={optionIndex} onClick={() => handleQuizAnswer(index, optionIndex)}>
-              {option || ''}
-            </Button>
-          ))}
-        </div>
-      )) || <p>No questions available</p>}
-    </Modal>
-  );
+  const speakText = (text) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
-  const handleQuizAnswer = (questionIndex, answerIndex) => {
-    console.log(`Quiz answer selected: Question ${questionIndex}, Answer ${answerIndex}`);
-    // Implementace logiky pro zpracování odpovědí na kvíz
+  const startListening = () => {
+    if ('webkitSpeechRecognition' in window) {
+      const recognition = new window.webkitSpeechRecognition();
+      recognition.lang = 'cs-CZ';
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setInputMessage(transcript);
+      };
+      recognition.start();
+      setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+    }
   };
 
   return (
-    <div className="chat-widget" style={customStyles}>
+    <div className="chat-widget" style={{
+      ...customStyles,
+      width: '600px',
+      backgroundColor: '#f0f0f0',
+      padding: '20px',
+      borderRadius: '10px',
+      boxShadow: '0 0 10px rgba(0,0,0,0.1)'
+    }}>
       <List
         className="message-list"
         dataSource={messages}
         renderItem={renderMessage}
+        style={{ maxHeight: '400px', overflowY: 'auto' }}
       />
       <div ref={chatEndRef} />
-      <div className="chat-input">
+      <div className="chat-input" style={{ marginTop: '20px' }}>
         <Input
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           onPressEnter={sendMessage}
           placeholder="Type a message..."
           disabled={isLoading}
+          style={{ marginBottom: '10px' }}
         />
-        <Button onClick={sendMessage} icon={<SendOutlined />} loading={isLoading}>
+        <Button onClick={sendMessage} icon={<SendOutlined />} loading={isLoading} style={{ marginRight: '10px' }}>
           Send
         </Button>
-        <Button onClick={() => setWorkingCart([])} icon={<ShoppingCartOutlined />}>
+        <Button onClick={() => setShowCart(true)} icon={<ShoppingCartOutlined />} style={{ marginRight: '10px' }}>
           Cart ({workingCart.length})
         </Button>
+        <Button onClick={startListening} icon={<AudioOutlined />} loading={isListening}>
+          {isListening ? 'Listening...' : 'Speak'}
+        </Button>
       </div>
-      {workingCart.length > 0 && renderWorkingCart()}
+      <div style={{ marginTop: '10px' }}>
+        <Select
+          style={{ width: 200 }}
+          placeholder="Select a voice"
+          onChange={(value) => setSelectedVoice(voices.find(v => v.name === value))}
+        >
+          {voices.map((voice) => (
+            <Option key={voice.name} value={voice.name}>{voice.name}</Option>
+          ))}
+        </Select>
+        <Button onClick={() => speakText(messages[messages.length - 1]?.content)} style={{ marginLeft: '10px' }}>
+          Speak Last Message
+        </Button>
+      </div>
+      {renderWorkingCart()}
       {showQuiz && renderQuiz()}
     </div>
   );

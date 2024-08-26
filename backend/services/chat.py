@@ -136,30 +136,9 @@ class ChatService(metaclass=Singleton):
         created_tool_output = self.create_tool_output(tool_call, result)
         tool_outputs.append(created_tool_output)
 
-    async def process_tool_call(self, tool_call, tool_outputs: list, extra_args=None):
-        result = None
-        try:
-            arguments = json.loads(tool_call.function.arguments)
-            function_name = tool_call.function.name
-            if extra_args:
-                arguments.update(extra_args)
-            if function_name not in self.tool_instances:
-                result = f"Tool '{function_name}' not found"
-                logger.warning(result)
-            else:
-                tool_instance = self.tool_instances[function_name]
-                result = tool_instance(**arguments)
-            logger.info(f"Tool '{function_name}' executed successfully")
-        except Exception as e:
-            result = f"Error executing tool '{function_name}': {str(e)}"
-            logger.error(result)
-        
-        # Ujistíme se, že výstup je string
-        if not isinstance(result, str):
-            result = json.dumps(result, ensure_ascii=False)
-        
-        created_tool_output = self.create_tool_output(tool_call, result)
-        tool_outputs.append(created_tool_output)
+        # Přidáme cart_action do odpovědi, pokud se jedná o manage_cart
+        if function_name == "manage_cart":
+            return {"cart_action": result}
 
     async def initialize_assistant(self):
         """
@@ -217,7 +196,11 @@ class ChatService(metaclass=Singleton):
         )
         async for event in stream:
             async for token in self.process_event(event, thread):
-                yield token
+                if isinstance(token, dict) and "cart_action" in token:
+                    # Pokud token obsahuje cart_action, odešleme ho jako samostatnou zprávu
+                    yield json.dumps({"cart_action": token["cart_action"]})
+                else:
+                    yield token
 
         logger.info("Tool run completed")
 
@@ -276,6 +259,9 @@ class ChatService(metaclass=Singleton):
             tool_outputs = await self.process_tool_calls(
                 run_obj.required_action.submit_tool_outputs.tool_calls
             )
+            for output in tool_outputs:
+                if isinstance(output, dict) and "cart_action" in output:
+                    yield json.dumps({"cart_action": output["cart_action"]})
             tool_output_events = (
                 await self.client.beta.threads.runs.submit_tool_outputs(
                     thread_id=thread.id,
@@ -305,41 +291,13 @@ class ChatService(metaclass=Singleton):
             logger.error(error_message)
             raise Exception(error_message)
 
-    async def process_tool_call(self, tool_call, tool_outputs: list, extra_args=None):
-        result = None
-        try:
-            arguments = json.loads(tool_call.function.arguments)
-            function_name = tool_call.function.name
-            if extra_args:
-                arguments.update(extra_args)
-            if function_name not in self.tool_instances:
-                result = f"Tool '{function_name}' not found"
-                logger.warning(result)
-            else:
-                tool_instance = self.tool_instances[function_name]
-                result = tool_instance(**arguments)
-            logger.info(f"Tool '{function_name}' executed successfully")
-        except Exception as e:
-            result = f"Error executing tool '{function_name}': {str(e)}"
-            logger.error(result)
-        
-        # Ujistíme se, že výstup je string
-        if not isinstance(result, str):
-            result = json.dumps(result, ensure_ascii=False)
-        
-        created_tool_output = self.create_tool_output(tool_call, result)
-        tool_outputs.append(created_tool_output)
-
     async def process_tool_calls(self, tool_calls, extra_args = None):
         """
         This function processes all the tool calls.
         """
         tool_outputs = []
-        coroutines = []
-        total_calls = len(tool_calls)
-        for i in range(total_calls):
-            tool_call = tool_calls[i]
-            coroutines.append(self.process_tool_call(tool_call, tool_outputs, extra_args))
-        if coroutines:
-            await asyncio.gather(*coroutines)
+        for tool_call in tool_calls:
+            result = await self.process_tool_call(tool_call, tool_outputs, extra_args)
+            if result and "cart_action" in result:
+                tool_outputs.append(result)
         return tool_outputs
