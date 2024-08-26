@@ -108,38 +108,61 @@ class ChatService(metaclass=Singleton):
             logger.error(f"Failed to get product list: {str(e)}")
             raise
 
-    async def process_tool_call(self, tool_call, tool_outputs: list, extra_args=None):
-        result = None
-        try:
-            arguments = json.loads(tool_call.function.arguments)
-            function_name = tool_call.function.name
-            if extra_args:
-                arguments.update(extra_args)
-            if function_name not in self.tool_instances:
-                result = f"Tool '{function_name}' not found"
-                logger.warning(result)
-            else:
-                tool_instance = self.tool_instances[function_name]
-                if asyncio.iscoroutinefunction(tool_instance):
-                    result = await tool_instance(**arguments)
+    async def process_tool_call(self, tool_call, extra_args=None):
+            result = None
+            try:
+                arguments = json.loads(tool_call.function.arguments)
+                function_name = tool_call.function.name
+                if extra_args:
+                    arguments.update(extra_args)
+                if function_name not in self.tool_instances:
+                    result = f"Tool '{function_name}' not found"
+                    logger.warning(result)
                 else:
-                    result = tool_instance(**arguments)
-            logger.info(f"Tool '{function_name}' executed successfully")
-        except Exception as e:
-            result = f"Error executing tool '{function_name}': {str(e)}"
-            logger.error(result)
-        
-        # Ujistíme se, že výstup je string
-        if not isinstance(result, str):
-            result = json.dumps(result, ensure_ascii=False)
-        
-        created_tool_output = self.create_tool_output(tool_call, result)
-        tool_outputs.append(created_tool_output)
+                    tool_instance = self.tool_instances[function_name]
+                    if asyncio.iscoroutinefunction(tool_instance):
+                        result = await tool_instance(**arguments)
+                    else:
+                        result = tool_instance(**arguments)
+                logger.info(f"Tool '{function_name}' executed successfully")
+            except Exception as e:
+                result = f"Error executing tool '{function_name}': {str(e)}"
+                logger.error(result)
 
-        # Přidáme cart_action do odpovědi, pokud se jedná o manage_cart
-        if function_name == "manage_cart":
-            return {"cart_action": result}
+            # Ujistíme se, že výstup je string
+            if not isinstance(result, str):
+                result = json.dumps(result, ensure_ascii=False)
 
+            # Přidáme cart_action do odpovědi, pokud se jedná o manage_cart
+            if function_name == "manage_cart":
+                return {"cart_action": result}
+            return {
+                "tool_call_id": tool_call.id,
+                "output": result
+            }
+
+    async def process_tool_calls(self, tool_calls, extra_args = None):
+            """
+            This function processes all the tool calls.
+            """
+            tool_outputs = []
+            cart_actions = []
+            for tool_call in tool_calls:
+                result = await self.process_tool_call(tool_call, extra_args)
+                if isinstance(result, dict) and "cart_action" in result:
+                    cart_actions.append(result["cart_action"])
+                    # Přidáme výstup nástroje i pro cart_action
+                    tool_outputs.append({
+                        "tool_call_id": tool_call.id,
+                        "output": json.dumps(result["cart_action"])
+                    })
+                else:
+                    # Přidáme výstup nástroje do tool_outputs
+                    tool_outputs.append(result)
+
+            # Vrátíme obojí: tool_outputs pro OpenAI API a cart_actions pro další zpracování
+            return tool_outputs, cart_actions
+    
     async def initialize_assistant(self):
         """
         Initializes the assistant asynchronously.
@@ -224,16 +247,6 @@ class ChatService(metaclass=Singleton):
             self.chat_to_thread_map[chat_id] = thread.id
         return thread
 
-    def create_tool_output(self, tool_call, tool_result):
-        """
-        This function creates the tool output.
-        """
-        output = {
-            "tool_call_id": tool_call.id,
-            "output": tool_result,
-        }
-        return output
-
     async def process_event(self, event, thread: Thread, **kwargs):
         """
         Process an event in the thread.
@@ -256,12 +269,11 @@ class ChatService(metaclass=Singleton):
 
         elif isinstance(event, ThreadRunRequiresAction):
             run_obj = event.data
-            tool_outputs = await self.process_tool_calls(
+            tool_outputs, cart_actions = await self.process_tool_calls(
                 run_obj.required_action.submit_tool_outputs.tool_calls
             )
-            for output in tool_outputs:
-                if isinstance(output, dict) and "cart_action" in output:
-                    yield json.dumps({"cart_action": output["cart_action"]})
+            for cart_action in cart_actions:
+                yield json.dumps({"cart_action": cart_action})
             tool_output_events = (
                 await self.client.beta.threads.runs.submit_tool_outputs(
                     thread_id=thread.id,
@@ -290,14 +302,3 @@ class ChatService(metaclass=Singleton):
             error_message = f"Run failed: {event.__class__.__name__}"
             logger.error(error_message)
             raise Exception(error_message)
-
-    async def process_tool_calls(self, tool_calls, extra_args = None):
-        """
-        This function processes all the tool calls.
-        """
-        tool_outputs = []
-        for tool_call in tool_calls:
-            result = await self.process_tool_call(tool_call, tool_outputs, extra_args)
-            if result and "cart_action" in result:
-                tool_outputs.append(result)
-        return tool_outputs

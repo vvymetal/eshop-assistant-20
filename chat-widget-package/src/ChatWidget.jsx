@@ -69,6 +69,7 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
         });
         console.log(parsedAction.message || 'Položka přidána do košíku');
       } else if (parsedAction.status === 'removed' || parsedAction.status === 'cleared') {
+  
         setWorkingCart(prevCart => {
           if (parsedAction.status === 'cleared') {
             return [];
@@ -100,7 +101,7 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
           },
           body: JSON.stringify({ user_query: inputMessage }),
         });
-        
+
         console.log('API odpověď status:', response.status);
   
         if (!response.ok) {
@@ -171,6 +172,7 @@ const retryFetch = async (url, options, retries = 3) => {
     throw err;
   }
 };
+
 
   const handleStreamedResponse = (data) => {
     console.log('Zpracování streamovaných dat:', data);

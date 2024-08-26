@@ -39,11 +39,25 @@ class CartManagementTool:
         for item in self.cart.items:
             if item.product_id == product_id:
                 item.quantity += quantity
-                return {"status": "updated", "message": f"Množství produktu {name} bylo aktualizováno na {item.quantity}."}
-        
+                return {
+                    "status": "updated", 
+                    "message": f"Množství produktu {name} bylo aktualizováno na {item.quantity}.",
+                    "product_id": product_id,
+                    "name": name,
+                    "price": price,
+                    "quantity": item.quantity
+                }
+
         new_item = CartItem(product_id=product_id, name=name, price=price, quantity=quantity)
         self.cart.items.append(new_item)
-        return {"status": "added", "message": f"Produkt {name} byl přidán do košíku."}
+        return {
+            "status": "added", 
+            "message": f"Produkt {name} byl přidán do košíku.",
+            "product_id": product_id,
+            "name": name,
+            "price": price,
+            "quantity": quantity
+        }
 
     def remove_from_cart(self, product_id: str, quantity: Optional[int] = None) -> Dict:
         """Odebere produkt z košíku nebo sníží jeho množství."""
