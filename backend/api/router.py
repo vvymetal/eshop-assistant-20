@@ -10,6 +10,11 @@ from pydantic import BaseModel
 
 from ..services.chat import ChatService
 from ..utils.stream import stream_generator
+from fastapi import HTTPException
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 chat_service = ChatService()
@@ -64,3 +69,27 @@ async def get_product_details(product_id: str):
     """
     result = await chat_service.get_product_details(product_id)
     return JSONResponse(content=result)
+
+
+@api_router.get("/chat/{chat_id}/latest-messages")
+async def get_latest_messages(chat_id: str):
+    try:
+        messages = await chat_service.get_latest_messages(chat_id)
+        return {"messages": messages}
+    except Exception as e:
+        logger.error(f"Error getting latest messages: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@api_router.get("/cart/{chat_id}")
+async def get_cart(chat_id: str):
+    try:
+        cart = await chat_service.get_cart(chat_id)
+        return cart
+    except Exception as e:
+        logger.error(f"Error getting cart: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@api_router.post("/cart/{chat_id}")
+async def update_cart(chat_id: str, cart_action: dict):
+    await chat_service.update_cart(chat_id, cart_action)
+    return {"status": "success"}

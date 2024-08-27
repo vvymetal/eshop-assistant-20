@@ -28,6 +28,8 @@ from ..utils.singleton import Singleton
 from ..services.assistant_setup import AssistantSetup
 from ..tools.cart_management import CartManagementTool, CART_MANAGEMENT_TOOL
 from ..services.eshop_api import EshopApiService
+from .conversation_manager import ConversationManager
+from ..database import get_db
 
 os.environ["OPENAI_API_KEY"] = config.OPENAI_API_KEY
 
@@ -51,7 +53,7 @@ class ChatService(metaclass=Singleton):
         self.name = 'E-shop Assistant'
         self.assistant_id = config.ASSISTANT_ID
         self.cart_tool = CartManagementTool()
-        self.eshop_api = EshopApiService()  # Inicializace EshopApiService
+        self.eshop_api = EshopApiService()
         self.init_tools()
         self.assistant_setup = AssistantSetup(
             self.client,
@@ -60,6 +62,8 @@ class ChatService(metaclass=Singleton):
             self.name,
             self.tools
         )
+        self.db = next(get_db())
+        self.conversation_manager = ConversationManager(self.db, self.client)  # Zde přidáváme self.client
         asyncio.create_task(self.initialize_assistant())
 
     def init_tools(self):
@@ -109,57 +113,57 @@ class ChatService(metaclass=Singleton):
             raise
 
     async def process_tool_call(self, tool_call, extra_args=None):
-            result = None
-            try:
-                arguments = json.loads(tool_call.function.arguments)
-                function_name = tool_call.function.name
-                if extra_args:
-                    arguments.update(extra_args)
-                if function_name not in self.tool_instances:
-                    result = f"Tool '{function_name}' not found"
-                    logger.warning(result)
+        result = None
+        try:
+            arguments = json.loads(tool_call.function.arguments)
+            function_name = tool_call.function.name
+            if extra_args:
+                arguments.update(extra_args)
+            if function_name not in self.tool_instances:
+                result = f"Tool '{function_name}' not found"
+                logger.warning(result)
+            else:
+                tool_instance = self.tool_instances[function_name]
+                if asyncio.iscoroutinefunction(tool_instance):
+                    result = await tool_instance(**arguments)
                 else:
-                    tool_instance = self.tool_instances[function_name]
-                    if asyncio.iscoroutinefunction(tool_instance):
-                        result = await tool_instance(**arguments)
-                    else:
-                        result = tool_instance(**arguments)
-                logger.info(f"Tool '{function_name}' executed successfully")
-            except Exception as e:
-                result = f"Error executing tool '{function_name}': {str(e)}"
-                logger.error(result)
+                    result = tool_instance(**arguments)
+            logger.info(f"Tool '{function_name}' executed successfully")
+        except Exception as e:
+            result = f"Error executing tool '{function_name}': {str(e)}"
+            logger.error(result)
 
-            # Ujistíme se, že výstup je string
-            if not isinstance(result, str):
-                result = json.dumps(result, ensure_ascii=False)
+        if not isinstance(result, str):
+            result = json.dumps(result, ensure_ascii=False)
 
-            # Přidáme cart_action do odpovědi, pokud se jedná o manage_cart
-            if function_name == "manage_cart":
-                cart_action_result = json.loads(result)
-                return {"cart_action": cart_action_result}
+        if function_name == "manage_cart":
+            cart_action_result = json.loads(result)
+            return {"cart_action": cart_action_result}
+        
+        return result
 
     async def process_tool_calls(self, tool_calls, extra_args = None):
-            """
-            This function processes all the tool calls.
-            """
-            tool_outputs = []
-            cart_actions = []
-            for tool_call in tool_calls:
-                result = await self.process_tool_call(tool_call, extra_args)
-                if isinstance(result, dict) and "cart_action" in result:
-                    cart_actions.append(result["cart_action"])
-                    # Přidáme výstup nástroje i pro cart_action
-                    tool_outputs.append({
-                        "tool_call_id": tool_call.id,
-                        "output": json.dumps(result["cart_action"])
-                    })
-                else:
-                    # Přidáme výstup nástroje do tool_outputs
-                    tool_outputs.append(result)
+        """
+        This function processes all the tool calls.
+        """
+        tool_outputs = []
+        cart_actions = []
+        for tool_call in tool_calls:
+            result = await self.process_tool_call(tool_call, extra_args)
+            if isinstance(result, dict) and "cart_action" in result:
+                cart_actions.append(result["cart_action"])
+                tool_outputs.append({
+                    "tool_call_id": tool_call.id,
+                    "output": json.dumps(result["cart_action"])
+                })
+            else:
+                tool_outputs.append({
+                    "tool_call_id": tool_call.id,
+                    "output": result
+                })
 
-            # Vrátíme obojí: tool_outputs pro OpenAI API a cart_actions pro další zpracování
-            return tool_outputs, cart_actions
-    
+        return tool_outputs, cart_actions
+
     async def initialize_assistant(self):
         """
         Initializes the assistant asynchronously.
@@ -195,8 +199,8 @@ class ChatService(metaclass=Singleton):
         """
         await self.create_assistant()
         thread = await self.create_or_get_thread(chat_id)
+        conversation = await self.conversation_manager.create_or_get_conversation(chat_id, thread.id)
 
-        # Add current time information
         time_message = f"Aktuální čas: {self.get_formatted_time()}"
         await self.client.beta.threads.messages.create(
             thread.id,
@@ -204,12 +208,13 @@ class ChatService(metaclass=Singleton):
             content=time_message,
         )
 
-        # Add user's message
         await self.client.beta.threads.messages.create(
             thread.id,
             role="user",
             content=content,
         )
+
+        await self.conversation_manager.update_last_activity(chat_id)
 
         stream = await self.client.beta.threads.runs.create(
             thread_id=thread.id, assistant_id=self.assistant.id, stream=True
@@ -217,7 +222,6 @@ class ChatService(metaclass=Singleton):
         async for event in stream:
             async for token in self.process_event(event, thread):
                 if isinstance(token, dict) and "cart_action" in token:
-                    # Pokud token obsahuje cart_action, odešleme ho jako samostatnou zprávu
                     yield json.dumps({"cart_action": token["cart_action"]})
                 else:
                     yield token
@@ -247,17 +251,6 @@ class ChatService(metaclass=Singleton):
     async def process_event(self, event, thread: Thread, **kwargs):
         """
         Process an event in the thread.
-
-        Args:
-            event: The event to be processed.
-            thread: The thread object.
-            **kwargs: Additional keyword arguments.
-
-        Yields:
-            The processed tokens.
-
-        Raises:
-            Exception: If the run fails.
         """
         if isinstance(event, ThreadMessageDelta):
             data = event.data.delta.content
@@ -299,3 +292,17 @@ class ChatService(metaclass=Singleton):
             error_message = f"Run failed: {event.__class__.__name__}"
             logger.error(error_message)
             raise Exception(error_message)
+
+    async def update_cart(self, chat_id: str, cart_action: dict):
+        await self.conversation_manager.update_cart(chat_id, cart_action)
+
+    async def get_cart(self, chat_id: str):
+        return await self.conversation_manager.get_cart(chat_id)
+
+    async def get_latest_messages(self, chat_id: str, limit: int = 10):
+        conversation = await self.conversation_manager.create_or_get_conversation(chat_id, None)
+        if conversation and conversation.thread_id:
+            thread = await self.client.beta.threads.messages.list(conversation.thread_id, limit=limit)
+            return [{"role": msg.role, "content": msg.content[0].text.value} for msg in thread.data]
+        return []
+

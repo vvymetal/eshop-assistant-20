@@ -158,6 +158,7 @@ node_modules/
 # Frontend build
 frontend/build/
 frontend/dist/
+frontend/*
 
 # Logs
 logs

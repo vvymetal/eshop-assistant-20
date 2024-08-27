@@ -29,10 +29,10 @@ class CartManagementTool:
             result = self.clear_cart()
         else:
             result = {"status": "error", "message": f"Neznámá akce: {action}"}
-        
+
         # Převedeme výsledek na JSON string
         return json.dumps(result, ensure_ascii=False)
-    
+        
     
     def add_to_cart(self, product_id: str, name: str, price: float, quantity: int = 1) -> Dict:
         """Přidá produkt do košíku nebo zvýší jeho množství, pokud už v košíku je."""

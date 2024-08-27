@@ -9,7 +9,7 @@ const root = createRoot(document.getElementById('root'));
 root.render(
   <ConfigProvider>
     <ChatWidget 
-      apiEndpoint="http://localhost:8000/chat" 
+      apiEndpoint="http://localhost:8000" 
       onAddToCart={(cart) => console.log('Added to cart:', cart)}
     />
   </ConfigProvider>
