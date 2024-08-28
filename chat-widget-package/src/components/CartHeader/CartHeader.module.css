@@ -1,0 +1,30 @@
+/* src/components/CartHeader/CartHeader.module.css */
+.cartHeader {
+    padding: 1rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: bold;
+    font-size: 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .cartActions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .minimizeButton,
+  .settingsButton {
+    padding: 0.5rem;
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .minimizeButton:hover,
+  .settingsButton:hover {
+    background-color: #f3f4f6;
+  }

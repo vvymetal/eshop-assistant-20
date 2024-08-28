@@ -1,0 +1,125 @@
+.chatWidget {
+    display: flex;
+    height: 100vh;
+    background-color: #f3f4f6;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  }
+  
+  .chatColumn {
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #e5e7eb;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+  }
+  
+  .cartColumn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease-in-out;
+  }
+  
+  .cartColumn.minimized {
+    transform: translateX(calc(100% - 60px));
+  }
+  
+  .chatHeader, .cartHeader {
+    padding: 1rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: bold;
+    font-size: 1.25rem;
+  }
+  
+  .chatMessages, .cartItems {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+  }
+  
+  .message {
+    margin-bottom: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    max-width: 80%;
+  }
+  
+  .userMessage {
+    background-color: #e2e8f0;
+    align-self: flex-end;
+  }
+  
+  .assistantMessage {
+    background-color: #bfdbfe;
+    align-self: flex-start;
+  }
+  
+  .cartItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .itemDetails {
+    flex: 1;
+  }
+  
+  .itemActions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .cartSummary {
+    margin-top: auto;
+    padding: 1rem;
+    background-color: #f3f4f6;
+    border-top: 1px solid #e5e7eb;
+  }
+  
+  .checkoutButton {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .checkoutButton:hover {
+    background-color: #2563eb;
+  }
+  
+  .chatInput {
+    display: flex;
+    padding: 1rem;
+    background-color: #ffffff;
+    border-top: 1px solid #e5e7eb;
+  }
+  
+  .chatInput input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+  }
+  
+  .chatInput button {
+    margin-left: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .chatInput button:hover {
+    background-color: #2563eb;
+  }

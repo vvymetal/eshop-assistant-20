@@ -1,0 +1,27 @@
+/* src/components/Message/Message.module.css */
+.message {
+    max-width: 75%;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 1rem;
+    position: relative;
+  }
+  
+  .user {
+    background-color: #e6f7ff;
+    margin-left: auto;
+    border-bottom-right-radius: 0;
+  }
+  
+  .assistant {
+    background-color: #f0f0f0;
+    margin-right: auto;
+    border-bottom-left-radius: 0;
+  }
+  
+  .error {
+    background-color: #ffd6d6;
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: 1rem;
+  }

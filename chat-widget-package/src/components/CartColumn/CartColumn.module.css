@@ -1,0 +1,37 @@
+/* src/components/CartColumn/CartColumn.module.css */
+.cartColumn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease-in-out;
+    max-width: 350px;
+  }
+  
+  .minimized {
+    transform: translateX(calc(100% - 60px));
+  }
+  
+  .cartContent {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 1rem;
+  }
+  
+  .cartItems {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+  }
+  
+  .cartFooter {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+  }
+  
+  .checkoutButton {
+    width: 100%;
+    margin-top: 1rem;
+  }
