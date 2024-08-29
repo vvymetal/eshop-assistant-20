@@ -1,17 +1,16 @@
-// src/contexts/CartContext.js
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { message } from 'antd';
 
 const CartContext = createContext();
 
 export const useCart = () => useContext(CartContext);
 
-export const CartProvider = ({ children, apiEndpoint, onAddToCart }) => {
+export const CartProvider = ({ children, apiEndpoint, chatId }) => {
   const [workingCart, setWorkingCart] = useState([]);
   const [isCartLoading, setIsCartLoading] = useState(false);
   const [isCartMinimized, setIsCartMinimized] = useState(false);
 
-  const fetchCart = useCallback(async (chatId) => {
+  const fetchCart = useCallback(async () => {
     if (!chatId) {
       console.log('ChatId not initialized yet');
       return;
@@ -19,26 +18,46 @@ export const CartProvider = ({ children, apiEndpoint, onAddToCart }) => {
     setIsCartLoading(true);
     try {
       console.log('Fetching cart for chatId:', chatId);
+      console.log('API Endpoint:', apiEndpoint);
       const response = await fetch(`${apiEndpoint}/cart/${chatId}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      console.log('Full response:', response);
+  
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+  
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+  
+      let cartData;
+      try {
+        cartData = JSON.parse(responseText);
+      } catch (error) {
+        console.error('Error parsing JSON:', error);
+        throw new Error('Invalid JSON response from server');
       }
-      const cartData = await response.json();
-      console.log('Fetched cart data:', cartData);
+  
+      console.log('Parsed cart data:', cartData);
       if (cartData && cartData.data) {
         const cartItems = Array.isArray(cartData.data) ? cartData.data : [cartData.data];
-        setWorkingCart(cartItems);
+        setWorkingCart(cartItems.map(item => ({
+          product_id: item.product_id,
+          name: item.name || 'Unnamed product',
+          price: item.price !== undefined ? item.price : 'N/A',
+          quantity: item.quantity || 1
+        })));
       } else {
         console.warn('Received cart data is not in expected format:', cartData);
         setWorkingCart([]);
       }
     } catch (error) {
       console.error('Error fetching cart:', error);
+      console.error('Full error object:', error);
       setWorkingCart([]);
+      message.error('Failed to load cart data. Please try again later.');
     } finally {
       setIsCartLoading(false);
     }
-  }, [apiEndpoint]);
+  }, [apiEndpoint, chatId]);
 
   const updateWorkingCart = useCallback((cartAction) => {
     console.log('Updating cart with action:', cartAction);
@@ -97,7 +116,7 @@ export const CartProvider = ({ children, apiEndpoint, onAddToCart }) => {
       console.log('Nový stav košíku:', updatedCart);
       return updatedCart;
     });
-
+  
     // Zobrazení notifikace o změně košíku
     switch (status) {
       case 'removed':
@@ -111,7 +130,7 @@ export const CartProvider = ({ children, apiEndpoint, onAddToCart }) => {
         message.success('Košík byl vyčištěn');
         break;
     }
-
+  
     // Synchronizace s backendem
     fetch(`${apiEndpoint}/cart/${chatId}`, {
       method: 'POST',
@@ -122,19 +141,24 @@ export const CartProvider = ({ children, apiEndpoint, onAddToCart }) => {
       if (!response.ok) throw new Error('Failed to update cart on server');
       return response.json();
     })
-    .then(updatedCart => {
-      console.log('Cart updated on server:', updatedCart);
-      if (updatedCart && updatedCart.data) {
-        const cartItems = Array.isArray(updatedCart.data) ? updatedCart.data : [updatedCart.data];
-        setWorkingCart(cartItems);
+    .then(result => {
+      console.log('Cart updated on server:', result);
+      if (result.status === 'success') {
+        console.log('Server update successful, fetching latest cart data');
+        fetchCart(); // Získání aktuálního stavu košíku ze serveru
       } else {
-        console.warn('Received updated cart data is not in expected format:', updatedCart);
+        console.warn('Unexpected server response:', result);
+        // Možná budete chtít zde přidat nějakou dodatečnou logiku nebo notifikaci
       }
     })
-    .catch(error => console.error('Error updating cart on server:', error));
-
+    .catch(error => {
+      console.error('Error updating cart on server:', error);
+      message.error('Failed to update cart on server. Please try again.');
+      // Zde můžete přidat logiku pro obnovení původního stavu košíku v případě chyby
+    });
+  
     console.log('Aktualizace košíku dokončena');
-  }, [apiEndpoint]);
+  }, [apiEndpoint, chatId, fetchCart]);
 
   const cartSummary = useMemo(() => {
     const totalItems = workingCart.reduce((sum, item) => sum + item.quantity, 0);
@@ -155,9 +179,16 @@ export const CartProvider = ({ children, apiEndpoint, onAddToCart }) => {
       message.warning('Košík je prázdný');
       return;
     }
-    onAddToCart(workingCart);
-    message.success('Položky byly úspěšně přidány do hlavního košíku!');
-  }, [workingCart, onAddToCart]);
+    // Zde by měla být implementace checkoutu, zatím jen logujeme
+    console.log('Checkout with items:', workingCart);
+    message.success('Objednávka byla úspěšně odeslána!');
+  }, [workingCart]);
+
+  useEffect(() => {
+    if (chatId) {
+      fetchCart();
+    }
+  }, [chatId, fetchCart]);
 
   return (
     <CartContext.Provider value={{

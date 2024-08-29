@@ -1,13 +1,14 @@
 // src/components/ChatWidget/ChatWidget.jsx
 import React from 'react';
-import Message from '../Message/Message';
-import ChatInput from '../ChatInput/ChatInput';
-import CartColumn from '../CartColumn/CartColumn';
+import ChatDesktop from './ChatDesktop';
+import ChatMobile from './ChatMobile';
 import { useChat } from '../../contexts/ChatContext';
 import { useSettings } from '../../contexts/SettingsContext';
+import useResponsive from '../../hooks/useResponsive';
 import styles from './ChatWidget.module.css';
 
 const ChatWidget = ({ customStyles }) => {
+  const { isMobile } = useResponsive();
   const { 
     messages, 
     isLoading, 
@@ -20,17 +21,23 @@ const ChatWidget = ({ customStyles }) => {
 
   return (
     <div className={styles.chatWidget} style={customStyles}>
-      <div className={styles.chatColumn}>
-        <div className={styles.chatHeader}>Chat with Assistant</div>
-        <div className={styles.chatMessages}>
-          {messages.map((message, index) => (
-            <Message key={index} content={message.content} role={message.role} />
-          ))}
-          <div ref={chatEndRef} />
-        </div>
-        <ChatInput />
-      </div>
-      <CartColumn onOpenSettings={openSettings} />
+      {isMobile ? (
+        <ChatMobile 
+          messages={messages}
+          isLoading={isLoading}
+          chatEndRef={chatEndRef}
+          onOpenSettings={openSettings}
+          customStyles={customStyles}
+        />
+      ) : (
+        <ChatDesktop 
+          messages={messages}
+          isLoading={isLoading}
+          chatEndRef={chatEndRef}
+          onOpenSettings={openSettings}
+          customStyles={customStyles}
+        />
+      )}
     </div>
   );
 };

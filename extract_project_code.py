@@ -48,12 +48,19 @@ def should_include_file(file_path, ignore_patterns):
 
     return file_extension in include_extensions or file_name in always_include
 
+def is_frontend_file(file_path):
+    """
+    Určuje, zda je soubor součástí frontendu.
+    """
+    frontend_paths = ['chat-widget-package', 'src']
+    return any(path in file_path for path in frontend_paths)
+
 def extract_project_structure(project_path):
-    project_structure = {}
+    frontend_structure = {}
+    backend_structure = {}
     ignore_patterns = load_gitignore(project_path)
     
     for root, dirs, files in os.walk(project_path):
-        # Explicitně vynecháváme adresář venv
         if 'venv' in dirs:
             dirs.remove('venv')
         
@@ -64,21 +71,28 @@ def extract_project_structure(project_path):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     try:
                         content = f.read()
-                        project_structure[relative_path] = content
+                        if is_frontend_file(relative_path):
+                            frontend_structure[relative_path] = content
+                        else:
+                            backend_structure[relative_path] = content
                     except UnicodeDecodeError:
                         print(f"Skipping binary file: {relative_path}")
     
-    return project_structure
+    return frontend_structure, backend_structure
 
-def save_project_structure(project_structure, output_file):
+def save_project_structure(structure, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(project_structure, f, indent=2, ensure_ascii=False)
+        json.dump(structure, f, indent=2, ensure_ascii=False)
 
 if __name__ == "__main__":
     project_path = "/Users/vladimirvymetal/python/eshop-assistant"  # Upravte cestu k vašemu projektu
-    output_file = "project_structure.json"
+    frontend_output_file = "frontend.json"
+    backend_output_file = "backend.json"
     
-    project_structure = extract_project_structure(project_path)
-    save_project_structure(project_structure, output_file)
+    frontend_structure, backend_structure = extract_project_structure(project_path)
     
-    print(f"Project structure and contents saved to {output_file}")
+    save_project_structure(frontend_structure, frontend_output_file)
+    save_project_structure(backend_structure, backend_output_file)
+    
+    print(f"Frontend structure saved to {frontend_output_file}")
+    print(f"Backend structure saved to {backend_output_file}")

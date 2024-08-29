@@ -1,47 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { message } from 'antd';
-import { v4 as uuidv4 } from 'uuid';
-import { API_BASE_URL } from '../config/constants';
 
 const ChatContext = createContext();
 
 export const useChat = () => useContext(ChatContext);
 
-export const ChatProvider = ({ children, apiEndpoint = API_BASE_URL }) => {
+export const ChatProvider = ({ children, apiEndpoint, chatId }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [chatId, setChatId] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const chatEndRef = useRef(null);
-
-  useEffect(() => {
-    const initializeChatId = () => {
-      try {
-        let storedChatId = localStorage.getItem('chatId') || sessionStorage.getItem('chatId');
-        if (storedChatId) {
-          console.log('Retrieved existing chatId:', storedChatId);
-          setChatId(storedChatId);
-        } else {
-          const newChatId = uuidv4();
-          console.log('Created new chatId:', newChatId);
-          try {
-            localStorage.setItem('chatId', newChatId);
-          } catch (e) {
-            sessionStorage.setItem('chatId', newChatId);
-          }
-          setChatId(newChatId);
-        }
-      } catch (error) {
-        console.error('Error accessing storage:', error);
-        const fallbackChatId = uuidv4();
-        console.log('Using fallback chatId:', fallbackChatId);
-        setChatId(fallbackChatId);
-      }
-    };
-
-    initializeChatId();
-  }, []);
 
   const fetchLatestMessages = useCallback(async () => {
     if (!chatId) {
@@ -54,12 +23,17 @@ export const ChatProvider = ({ children, apiEndpoint = API_BASE_URL }) => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Oops! We haven't received a valid JSON response.");
+      }
       const data = await response.json();
       console.log('Fetched messages:', data);
       setMessages(data.messages || []);
     } catch (error) {
       console.error('Error fetching latest messages:', error);
       setMessages([]);
+      message.error('Failed to load chat history. Please try again later.');
     }
   }, [apiEndpoint, chatId]);
 
@@ -150,6 +124,16 @@ export const ChatProvider = ({ children, apiEndpoint = API_BASE_URL }) => {
       message.error('Speech recognition is not supported in your browser.');
     }
   }, []);
+
+  useEffect(() => {
+    if (chatId) {
+      fetchLatestMessages();
+    }
+  }, [chatId, fetchLatestMessages]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   return (
     <ChatContext.Provider value={{

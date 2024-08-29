@@ -123,3 +123,36 @@
   .chatInput button:hover {
     background-color: #2563eb;
   }
+
+  .chatWidget {
+    display: flex;
+    height: 100vh;
+    background-color: #f3f4f6;
+  }
+  
+  .chatColumn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #e5e7eb;
+  }
+  
+  .cartColumn {
+    width: 300px; /* Pevná šířka pro sloupec košíku */
+    padding: 20px; /* Přidaný padding */
+    background-color: #ffffff;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+    overflow-y: auto; /* Přidáno pro scrollování při přetečení obsahu */
+  }
+  
+  /* Zajistí, že košík zůstane vpravo i při zmenšení okna */
+  @media (max-width: 768px) {
+    .chatWidget {
+      flex-direction: column;
+    }
+  
+    .cartColumn {
+      width: 100%;
+      order: -1; /* Přesune košík nahoru na mobilních zařízeních */
+    }
+  }

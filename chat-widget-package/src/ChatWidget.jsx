@@ -287,7 +287,7 @@ const ChatWidget = ({ apiEndpoint, onAddToCart, customStyles = {} }) => {
           const { value, done } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
-          console.log('Přijatý chunk:', chunk);
+         // console.log('Přijatý chunk:', chunk);
 
           accumulatedResponse += chunk;
           const lines = accumulatedResponse.split('\n');

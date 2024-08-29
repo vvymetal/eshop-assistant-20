@@ -1,7 +1,7 @@
 // src/demo.jsx
 import { createRoot } from 'react-dom/client';
 import { ConfigProvider } from 'antd';
-import ChatWidget from './components/ChatWidget/ChatWidget';
+import ChatWidget from '../src/ChatWidget';
 import { ChatProvider } from './contexts/ChatContext.jsx';
 import { CartProvider } from './contexts/CartContext.jsx';
 import { SettingsProvider } from './contexts/SettingsContext.jsx';
