@@ -177,3 +177,5 @@ yarn-error.log*
 
 #node-modules
 chat-widgets-paskage/node_modules
+
+.env.development
